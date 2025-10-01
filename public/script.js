@@ -1,18 +1,25 @@
+// Modern AbsenPKL Dashboard - Main Script
 const CRON_API_URL = "https://api.cron-job.org";
+
+// ========== CONFIGURATION ==========
 const accounts = [
   {
+    id: "bagas",
     name: "Bagas Zakyan",
     email: "13636@gmail.com",
-    endpoint: "/api/logger/testlog?user=bagas",
+    icon: "fa-user-graduate",
+    iconColor: "purple",
     cron: {
       masuk: { jobId: "6070729", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" },
       pulang: { jobId: "6070763", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" }
     }
   },
   {
+    id: "dea",
     name: "Dea Fransiska",
     email: "13637@gmail.com",
-    endpoint: "/api/logger/testlog?user=dea",
+    icon: "fa-user-tie",
+    iconColor: "pink",
     cron: {
       masuk: { jobId: "6070758", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" },
       pulang: { jobId: "6070776", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" }
@@ -20,57 +27,61 @@ const accounts = [
   }
 ];
 
-// ========== Function Utilities ==========
-
-function formatTanggal(date = new Date()) {
-  return new Date(date).toLocaleDateString('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  }).toUpperCase().replace(/\./g, '');
-}
+// ========== UTILITIES ==========
 
 function showNotification(message, type = 'error') {
-  const notification = document.getElementById('cron-error');
-  const notificationText = notification.querySelector('span');
+  const container = document.getElementById('notification-container');
+  const notification = document.createElement('div');
+  notification.className = `notification notification-${type}`;
+  notification.innerHTML = `
+    <i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'}"></i>
+    <span>${message}</span>
+  `;
   
-  notificationText.textContent = message;
+  container.appendChild(notification);
   
-  if (type === 'success') {
-    notification.classList.remove('bg-red-100', 'border-red-400', 'text-red-700');
-    notification.classList.add('bg-green-100', 'border-green-400', 'text-green-700');
-  } else {
-    notification.classList.remove('bg-green-100', 'border-green-400', 'text-green-700');
-    notification.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
-  }
+  // Trigger animation
+  setTimeout(() => notification.classList.add('show'), 10);
   
-  notification.classList.remove('hidden');
-  
+  // Auto remove after 5 seconds
   setTimeout(() => {
-    notification.classList.add('hidden');
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 300);
   }, 5000);
 }
 
-async function getCronStatus(cronId, apiKey) {
+async function fetchWithTimeout(url, options = {}, timeout = 8000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
   try {
-    const response = await fetch(`${CRON_API_URL}/jobs/${cronId}`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
 
+// ========== CRON API ==========
+
+async function getCronStatus(jobId, apiKey) {
+  try {
+    const response = await fetchWithTimeout(`${CRON_API_URL}/jobs/${jobId}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    
     if (!response.ok) {
       throw new Error(`HTTP error! Status: ${response.status}`);
     }
-
+    
     const data = await response.json();
-
+    
     if (!data?.jobDetails) {
       throw new Error('Invalid job details structure');
     }
-
+    
     return data.jobDetails;
   } catch (error) {
     console.error('Error fetching cron status:', error);
@@ -78,388 +89,378 @@ async function getCronStatus(cronId, apiKey) {
   }
 }
 
-async function toggleBothCrons(acc, enable) {
-  const body = { job: { enabled: enable } };
-
-  const requests = [
-    fetch(`${CRON_API_URL}/jobs/${acc.cron.masuk.jobId}`, {
-      method: "PATCH",
+async function updateCronJob(jobId, apiKey, updates) {
+  try {
+    const response = await fetchWithTimeout(`${CRON_API_URL}/jobs/${jobId}`, {
+      method: 'PATCH',
       headers: {
-        "Authorization": `Bearer ${acc.cron.masuk.apiKey}`,
-        "Content-Type": "application/json"
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
-    }),
-    fetch(`${CRON_API_URL}/jobs/${acc.cron.pulang.jobId}`, {
-      method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${acc.cron.pulang.apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    })
-  ];
-
-  const responses = await Promise.all(requests);
-  if (!responses.every(r => r.ok)) {
-    throw new Error('Gagal mengubah status cron');
+      body: JSON.stringify({ job: updates })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to update cron job: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating cron job:', error);
+    throw error;
   }
 }
 
-async function updateCronSchedule(acc, jamMasuk, jamPulang) {
-  const [jamMasukHours, jamMasukMinutes] = jamMasuk.split(':').map(Number);
-  const [jamPulangHours, jamPulangMinutes] = jamPulang.split(':').map(Number);
+// ========== UI RENDERING ==========
 
-  const bodyMasuk = {
-    job: {
-      schedule: {
-        timezone: "Asia/Jakarta",
-        minutes: [jamMasukMinutes],
-        hours: [jamMasukHours],
-        mdays: [-1],
-        months: [-1],
-        wdays: [1,2,3,4,5]
-      }
-    }
+function createAccountCard(account) {
+  const card = document.createElement('div');
+  card.className = 'card-glass p-6 cursor-pointer group';
+  
+  const iconColors = {
+    purple: 'text-purple-400',
+    pink: 'text-pink-400',
+    green: 'text-green-400'
   };
-  const bodyPulang = {
-    job: {
-      schedule: {
-        timezone: "Asia/Jakarta",
-        minutes: [jamPulangMinutes],
-        hours: [jamPulangHours],
-        mdays: [-1],
-        months: [-1],
-        wdays: [1,2,3,4,5]
-      }
-    }
-  };
+  
+  card.innerHTML = `
+    <div class="flex items-start gap-4 mb-6">
+      <div class="icon-box transition-transform group-hover:scale-110">
+        <i class="fas ${account.icon} text-3xl ${iconColors[account.iconColor] || 'text-purple-400'}"></i>
+      </div>
+      <div class="flex-1">
+        <h3 class="text-2xl font-bold text-white mb-1 group-hover:text-purple-300 transition">${account.name}</h3>
+        <p class="text-slate-400 text-sm">${account.email}</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center justify-between pt-4 border-t border-purple-500/10">
+      <div class="flex items-center gap-2">
+        <span class="status-dot status-loading" data-status></span>
+        <span class="text-sm text-slate-400" data-status-text>Memeriksa...</span>
+      </div>
+      <i class="fas fa-arrow-right text-purple-400 group-hover:translate-x-1 transition"></i>
+    </div>
+  `;
+  
+  // Check initial status
+  checkAccountStatus(card, account);
+  
+  // Add click handler
+  card.addEventListener('click', () => openDetailModal(account));
+  
+  return card;
+}
 
-  const requests = [
-    fetch(`${CRON_API_URL}/jobs/${acc.cron.masuk.jobId}`, {
-      method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${acc.cron.masuk.apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(bodyMasuk)
-    }),
-    fetch(`${CRON_API_URL}/jobs/${acc.cron.pulang.jobId}`, {
-      method: "PATCH",
-      headers: {
-        "Authorization": `Bearer ${acc.cron.pulang.apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(bodyPulang)
-    })
-  ];
-
-  const responses = await Promise.all(requests);
-  if (!responses.every(r => r.ok)) {
-    throw new Error('Gagal update jadwal cron');
+async function checkAccountStatus(card, account) {
+  const statusDot = card.querySelector('[data-status]');
+  const statusText = card.querySelector('[data-status-text]');
+  
+  try {
+    const [cronMasuk, cronPulang] = await Promise.all([
+      getCronStatus(account.cron.masuk.jobId, account.cron.masuk.apiKey),
+      getCronStatus(account.cron.pulang.jobId, account.cron.pulang.apiKey)
+    ]);
+    
+    const isActive = cronMasuk.enabled && cronPulang.enabled;
+    
+    statusDot.className = `status-dot ${isActive ? 'status-online' : 'status-offline'}`;
+    statusText.textContent = isActive ? 'Aktif' : 'Nonaktif';
+    statusText.className = `text-sm ${isActive ? 'text-green-400' : 'text-red-400'}`;
+  } catch (error) {
+    statusDot.className = 'status-dot status-offline';
+    statusText.textContent = 'Gagal Cek';
+    statusText.className = 'text-sm text-red-400';
+    console.error('Failed to check status:', error);
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const list = document.getElementById("account-list");
-  const icons = ['fa-user-graduate', 'fa-user-tie', 'fa-user-ninja'];
-  let loading = false;
-
-  // Add refresh button functionality
-  document.querySelector('.fa-sync-alt').parentElement.addEventListener('click', () => {
-    location.reload();
-  });
-
-  // Add export button functionality
-  document.querySelector('.fa-download').parentElement.addEventListener('click', () => {
-    showNotification('Fitur export akan segera tersedia', 'success');
-  });
-
-  accounts.forEach((acc, index) => {
-    const card = document.createElement("div");
-    card.className = "glass-card p-6 transition-all duration-300 cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02]";
-
-    const randomIcon = icons[index % icons.length];
-
-    card.innerHTML = `
-      <div class="card-content">
-        <div class="flex items-start mb-6">
-          <div class="bg-blue-900/30 p-4 rounded-xl mr-4 border border-blue-700/30 transition-all group-hover:bg-blue-800/50">
-            <i class="fas ${randomIcon} text-3xl text-blue-400"></i>
-          </div>
-          <div class="flex-1">
-            <h3 class="text-2xl font-bold text-white mb-1">${acc.name}</h3>
-            <p class="text-blue-300">${acc.email}</p>
-          </div>
-        </div>
-        <div class="flex justify-between items-center">
-          <div class="flex items-center">
-            <span class="status-indicator status-offline mr-2"></span>
-            <span class="text-blue-300 text-sm">Memeriksa status...</span>
-          </div>
-          <button class="px-4 py-2 bg-blue-900/50 hover:bg-blue-800/50 rounded-lg text-blue-300 transition flex items-center">
-            <i class="fas fa-external-link-alt mr-2"></i>Detail
-          </button>
-        </div>
+function buildHistoryTable(historyData) {
+  if (!historyData || historyData.length === 0) {
+    return `
+      <div class="text-center py-12">
+        <i class="fas fa-inbox text-5xl text-purple-400/30 mb-4"></i>
+        <p class="text-slate-400">Tidak ada riwayat absensi</p>
       </div>
     `;
+  }
+  
+  let tableHTML = `
+    <table class="table-modern">
+      <thead>
+        <tr>
+          <th>Tanggal</th>
+          <th>Absen Masuk</th>
+          <th>Absen Pulang</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  historyData.forEach(row => {
+    tableHTML += `
+      <tr>
+        <td class="font-medium text-slate-200">${row.tanggal || '-'}</td>
+        <td class="text-slate-300">${row.masuk || 'N/A'}</td>
+        <td class="text-slate-300">${row.pulang || 'N/A'}</td>
+        <td class="text-slate-300">${row.status || '-'}</td>
+      </tr>
+    `;
+  });
+  
+  tableHTML += `</tbody></table>`;
+  return tableHTML;
+}
 
-    // Check initial cron status
-    const checkInitialStatus = async () => {
-      try {
-        const [cronMasuk, cronPulang] = await Promise.all([
-          getCronStatus(acc.cron.masuk.jobId, acc.cron.masuk.apiKey),
-          getCronStatus(acc.cron.pulang.jobId, acc.cron.pulang.apiKey)
-        ]);
-        
-        const statusIndicator = card.querySelector('.status-indicator');
-        const statusText = card.querySelector('.text-blue-300');
-        
-        if (cronMasuk.enabled && cronPulang.enabled) {
-          statusIndicator.className = 'status-indicator status-online mr-2';
-          statusText.textContent = 'Aktif';
-        } else {
-          statusIndicator.className = 'status-indicator status-offline mr-2';
-          statusText.textContent = 'Nonaktif';
-        }
-      } catch (error) {
-        const statusIndicator = card.querySelector('.status-indicator');
-        const statusText = card.querySelector('.text-blue-300');
-        
-        statusIndicator.className = 'status-indicator status-warning mr-2';
-        statusText.textContent = 'Error';
+function formatTime(timestamp) {
+  if (!timestamp) return '-';
+  
+  return new Date(timestamp * 1000).toLocaleString('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+}
+
+// ========== MODAL LOGIC ==========
+
+let isModalLoading = false;
+
+async function openDetailModal(account) {
+  if (isModalLoading) return;
+  
+  const dialog = document.getElementById('detail-dialog');
+  const loading = document.getElementById('modal-loading');
+  const content = document.getElementById('modal-content');
+  
+  // Show modal with loading state
+  loading.classList.remove('hidden');
+  content.classList.add('hidden');
+  dialog.showModal();
+  
+  isModalLoading = true;
+  
+  try {
+    // Fetch all data in parallel
+    const [cronMasuk, cronPulang, historyResponse] = await Promise.all([
+      getCronStatus(account.cron.masuk.jobId, account.cron.masuk.apiKey),
+      getCronStatus(account.cron.pulang.jobId, account.cron.pulang.apiKey),
+      fetchWithTimeout(`/api/history?user=${account.id}`)
+    ]);
+    
+    // Check history response
+    if (!historyResponse.ok) {
+      throw new Error(`Failed to fetch history: ${historyResponse.statusText}`);
+    }
+    
+    const historyData = await historyResponse.json();
+    
+    if (!historyData.success) {
+      throw new Error(`API Error: ${historyData.message || 'Unknown error'}`);
+    }
+    
+    // Populate modal
+    populateModal(account, cronMasuk, cronPulang, historyData.data);
+    
+    // Show content
+    loading.classList.add('hidden');
+    content.classList.remove('hidden');
+    
+  } catch (error) {
+    showNotification(`Error: ${error.message}`, 'error');
+    dialog.close();
+    console.error('Modal error:', error);
+  } finally {
+    isModalLoading = false;
+  }
+}
+
+function populateModal(account, cronMasuk, cronPulang, historyData) {
+  // Update header
+  document.getElementById('modal-title').textContent = account.name;
+  document.getElementById('modal-email').textContent = account.email;
+  
+  const isActive = cronMasuk.enabled && cronPulang.enabled;
+  const statusDot = document.getElementById('modal-status-dot');
+  const statusText = document.getElementById('modal-status-text');
+  
+  statusDot.className = `status-dot ${isActive ? 'status-online' : 'status-offline'}`;
+  statusText.textContent = isActive ? 'Aktif' : 'Nonaktif';
+  
+  // Build cron settings
+  const jamMasuk = cronMasuk.schedule.hours[0] !== -1
+    ? `${String(cronMasuk.schedule.hours[0]).padStart(2, '0')}:${String(cronMasuk.schedule.minutes[0]).padStart(2, '0')}`
+    : '08:00';
+  
+  const jamPulang = cronPulang.schedule.hours[0] !== -1
+    ? `${String(cronPulang.schedule.hours[0]).padStart(2, '0')}:${String(cronPulang.schedule.minutes[0]).padStart(2, '0')}`
+    : '17:00';
+  
+  const cronContainer = document.getElementById('cron-container');
+  cronContainer.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Cron Masuk -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 class="font-bold text-slate-200">Cron Masuk</h4>
+          <span class="px-3 py-1 rounded-full text-xs font-semibold ${cronMasuk.enabled ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
+            ${cronMasuk.enabled ? 'AKTIF' : 'NONAKTIF'}
+          </span>
+        </div>
+        <p class="text-sm text-slate-400">Next: ${formatTime(cronMasuk.nextExecution)}</p>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Jam Masuk</label>
+          <input id="input-jam-masuk" type="time" value="${jamMasuk}" 
+                 class="w-full px-4 py-3 bg-purple-500/10 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition">
+        </div>
+      </div>
+      
+      <!-- Cron Pulang -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 class="font-bold text-slate-200">Cron Pulang</h4>
+          <span class="px-3 py-1 rounded-full text-xs font-semibold ${cronPulang.enabled ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
+            ${cronPulang.enabled ? 'AKTIF' : 'NONAKTIF'}
+          </span>
+        </div>
+        <p class="text-sm text-slate-400">Next: ${formatTime(cronPulang.nextExecution)}</p>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Jam Pulang</label>
+          <input id="input-jam-pulang" type="time" value="${jamPulang}" 
+                 class="w-full px-4 py-3 bg-purple-500/10 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition">
+        </div>
+      </div>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="flex flex-col sm:flex-row gap-4 mt-6 pt-6 border-t border-purple-500/10">
+      <button id="save-schedule-btn" class="btn btn-primary flex-1">
+        <i class="fas fa-save mr-2"></i>
+        Simpan Jadwal
+      </button>
+      <button id="toggle-cron-btn" class="btn ${isActive ? 'btn-danger' : 'btn-success'} flex-1">
+        <i class="fas ${isActive ? 'fa-stop' : 'fa-play'} mr-2"></i>
+        ${isActive ? 'Nonaktifkan' : 'Aktifkan'}
+      </button>
+    </div>
+  `;
+  
+  // Build history table
+  document.getElementById('history-container').innerHTML = buildHistoryTable(historyData);
+  
+  // Add event listeners
+  document.getElementById('save-schedule-btn').addEventListener('click', (e) => {
+    handleSaveSchedule(e.target, account);
+  });
+  
+  document.getElementById('toggle-cron-btn').addEventListener('click', (e) => {
+    handleToggleCron(e.target, account, !isActive);
+  });
+}
+
+// ========== EVENT HANDLERS ==========
+
+async function handleSaveSchedule(button, account) {
+  const originalHTML = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...';
+  
+  try {
+    const jamMasuk = document.getElementById('input-jam-masuk').value;
+    const jamPulang = document.getElementById('input-jam-pulang').value;
+    
+    const [hMasuk, mMasuk] = jamMasuk.split(':').map(Number);
+    const [hPulang, mPulang] = jamPulang.split(':').map(Number);
+    
+    const scheduleUpdate = {
+      schedule: {
+        timezone: 'Asia/Jakarta',
+        wdays: [1, 2, 3, 4, 5],
+        mdays: [-1],
+        months: [-1]
       }
     };
     
-    checkInitialStatus();
+    await Promise.all([
+      updateCronJob(account.cron.masuk.jobId, account.cron.masuk.apiKey, {
+        ...scheduleUpdate,
+        schedule: { ...scheduleUpdate.schedule, hours: [hMasuk], minutes: [mMasuk] }
+      }),
+      updateCronJob(account.cron.pulang.jobId, account.cron.pulang.apiKey, {
+        ...scheduleUpdate,
+        schedule: { ...scheduleUpdate.schedule, hours: [hPulang], minutes: [mPulang] }
+      })
+    ]);
+    
+    showNotification('Jadwal berhasil diperbarui!', 'success');
+    document.getElementById('detail-dialog').close();
+    refreshAllCards();
+    
+  } catch (error) {
+    showNotification(`Gagal menyimpan jadwal: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    button.innerHTML = originalHTML;
+  }
+}
 
-    card.onclick = async () => {
-      if (loading) return;
-      loading = true;
+async function handleToggleCron(button, account, enable) {
+  const originalHTML = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Memproses...';
+  
+  try {
+    await Promise.all([
+      updateCronJob(account.cron.masuk.jobId, account.cron.masuk.apiKey, { enabled: enable }),
+      updateCronJob(account.cron.pulang.jobId, account.cron.pulang.apiKey, { enabled: enable })
+    ]);
+    
+    showNotification(`Cron job berhasil ${enable ? 'diaktifkan' : 'dinonaktifkan'}!`, 'success');
+    document.getElementById('detail-dialog').close();
+    refreshAllCards();
+    
+  } catch (error) {
+    showNotification(`Gagal mengubah status: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    button.innerHTML = originalHTML;
+  }
+}
 
-      try {
-        // Show loading state
-        const iconElement = card.querySelector('i');
-        const originalIconClass = iconElement.className;
-        iconElement.className = 'fas fa-spinner fa-spin text-3xl text-blue-400';
+// ========== INITIALIZATION ==========
 
-        const [cronMasuk, cronPulang, absensiRes] = await Promise.all([
-          getCronStatus(acc.cron.masuk.jobId, acc.cron.masuk.apiKey),
-          getCronStatus(acc.cron.pulang.jobId, acc.cron.pulang.apiKey),
-          fetch(acc.endpoint).then(res => {
-            if (!res.ok) throw new Error(`Gagal fetch endpoint: ${res.status}`);
-            return res.text();
-          })
-        ]);
-        
-        const semuaAktif = cronMasuk.enabled && cronPulang.enabled;
-        
-        const jamMasukDefault = cronMasuk.schedule.hours[0] !== -1 ?
-          `${String(cronMasuk.schedule.hours[0]).padStart(2, '0')}:${String(cronMasuk.schedule.minutes[0]).padStart(2, '0')}` : "08:00";
-        
-        const jamPulangDefault = cronPulang.schedule.hours[0] !== -1 ?
-          `${String(cronPulang.schedule.hours[0]).padStart(2, '0')}:${String(cronPulang.schedule.minutes[0]).padStart(2, '0')}` : "17:00";
-
-        const formatWaktuLokal = (timestamp) => timestamp ? 
-          new Date(timestamp * 1000).toLocaleString('id-ID', {
-            timeZone: 'Asia/Jakarta',
-            day: '2-digit', month: 'short', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          }) : '-';
-
-        const statusContainer = document.getElementById("cron-status-container");
-        statusContainer.innerHTML = `
-          <div class="glass-card p-6 mb-6">
-            <h4 class="text-xl font-semibold text-blue-300 mb-4">Cron Masuk</h4>
-            <div class="flex items-center mb-2">
-              <span class="status-indicator ${cronMasuk.enabled ? 'status-online' : 'status-offline'} mr-2"></span>
-              <span class="${cronMasuk.enabled ? 'text-green-400' : 'text-red-400'} font-bold">
-                ${cronMasuk.enabled ? 'AKTIF' : 'NONAKTIF'}
-              </span>
-            </div>
-            <p class="text-blue-300 text-sm mb-1">Eksekusi berikutnya:</p>
-            <p class="text-white">${formatWaktuLokal(cronMasuk.nextExecution)}</p>
-          </div>
-          
-          <div class="glass-card p-6 mb-6">
-            <h4 class="text-xl font-semibold text-blue-300 mb-4">Cron Pulang</h4>
-            <div class="flex items-center mb-2">
-              <span class="status-indicator ${cronPulang.enabled ? 'status-online' : 'status-offline'} mr-2"></span>
-              <span class="${cronPulang.enabled ? 'text-green-400' : 'text-red-400'} font-bold">
-                ${cronPulang.enabled ? 'AKTIF' : 'NONAKTIF'}
-              </span>
-            </div>
-            <p class="text-blue-300 text-sm mb-1">Eksekusi berikutnya:</p>
-            <p class="text-white">${formatWaktuLokal(cronPulang.nextExecution)}</p>
-          </div>
-          
-          <div class="glass-card p-6">
-            <h4 class="text-xl font-semibold text-blue-300 mb-4">Pengaturan Jadwal</h4>
-            <div class="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label class="block text-sm font-semibold text-blue-300 mb-2">Jam Masuk</label>
-                <input id="input-jam-masuk" type="time" class="w-full bg-blue-900/50 border border-blue-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" value="${jamMasukDefault}">
-              </div>
-              <div>
-                <label class="block text-sm font-semibold text-blue-300 mb-2">Jam Pulang</label>
-                <input id="input-jam-pulang" type="time" class="w-full bg-blue-900/50 border border-blue-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" value="${jamPulangDefault}">
-              </div>
-            </div>
-            
-            <div class="flex gap-4 mt-6">
-              <button id="save-cron-btn" class="flex-1 btn-primary">
-                <i class="fas fa-save mr-2"></i>Simpan Jadwal
-              </button>
-              <button id="toggle-cron-btn" class="flex-1 ${semuaAktif ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} text-white py-3 rounded-lg font-semibold transition">
-                <i class="fas ${semuaAktif ? 'fa-stop' : 'fa-play'} mr-2"></i>
-                ${semuaAktif ? 'Nonaktifkan Semua' : 'Aktifkan Semua'}
-              </button>
-            </div>
-          </div>
-        `;
-
-        document.getElementById("save-cron-btn").onclick = async () => {
-          const jamMasuk = document.getElementById("input-jam-masuk").value;
-          const jamPulang = document.getElementById("input-jam-pulang").value;
-          try {
-            loading = true;
-            await updateCronSchedule(acc, jamMasuk, jamPulang);
-            showNotification('Jadwal berhasil diupdate!', 'success');
-            setTimeout(() => location.reload(), 1500);
-          } catch (error) {
-            showNotification(error.message);
-          } finally {
-            loading = false;
-          }
-        };
-
-        document.getElementById("toggle-cron-btn").onclick = async () => {
-          try {
-            loading = true;
-            const enable = !(cronMasuk.enabled && cronPulang.enabled);
-            await toggleBothCrons(acc, enable);
-            showNotification(`Cron Job berhasil ${enable ? 'diaktifkan' : 'dinonaktifkan'}!`, 'success');
-            setTimeout(() => location.reload(), 1500);
-          } catch (error) {
-            showNotification(`Error Toggle Cron: ${error.message}`);
-          } finally {
-            loading = false;
-          }
-        };
-
-        // Parse Absensi Data
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(absensiRes, 'text/html');
-        const table = doc.querySelector('#swdatatable');
-        const rows = table ? table.querySelectorAll('tbody tr') : [];
-        const thead = table ? table.querySelector('thead tr') : null;
-        let headers = [];
-        if (thead) {
-          headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim().toUpperCase());
-        }
-
-        const tanggalIndex = headers.indexOf('TANGGAL');
-        const absenMasukIndex = headers.indexOf('ABSEN MASUK');
-        const absenPulangIndex = headers.indexOf('ABSEN PULANG');
-
-        const tanggalHariIni = formatTanggal();
-        let status = { masuk: 'Belum Absen', pulang: 'Belum Pulang' };
-
-        rows.forEach(row => {
-          const cols = row.querySelectorAll('td, th');
-          if (cols.length > Math.max(tanggalIndex, absenMasukIndex, absenPulangIndex) && 
-              tanggalIndex !== -1 && absenMasukIndex !== -1 && absenPulangIndex !== -1) {
-            const tanggalDiLog = cols[tanggalIndex].textContent.trim().toUpperCase();
-            if (tanggalDiLog === tanggalHariIni) {
-              const absenMasukText = cols[absenMasukIndex].textContent.trim() || 'Belum Absen';
-              status.masuk = absenMasukText.split(' ')[0];
-              const jamPulang = cols[absenPulangIndex].textContent.trim();
-              status.pulang = jamPulang === '00:00:00' ? 'Belum Pulang' : (jamPulang || 'Belum Pulang');
-            }
-          }
-        });
-
-        const absensiStatusHTML = `
-          <div class="grid grid-cols-2 gap-6 mb-8">
-            <div class="glass-card p-6">
-              <div class="flex items-center mb-4">
-                <i class="fas ${status.masuk === 'Belum Absen' ? 'fa-times-circle text-red-400 text-2xl' : 'fa-clock text-blue-400 text-2xl'} mr-3"></i>
-                <div>
-                  <h4 class="text-lg font-semibold text-white">Absen Masuk</h4>
-                  <p class="${status.masuk === 'Belum Absen' ? 'text-red-400' : 'text-blue-300'} font-medium">${status.masuk}</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="glass-card p-6">
-              <div class="flex items-center mb-4">
-                <i class="fas ${status.pulang === 'Belum Pulang' ? 'fa-times-circle text-orange-400 text-2xl' : 'fa-check-circle text-green-400 text-2xl'} mr-3"></i>
-                <div>
-                  <h4 class="text-lg font-semibold text-white">Absen Pulang</h4>
-                  <p class="${status.pulang === 'Belum Pulang' ? 'text-orange-400' : 'text-green-300'} font-medium">${status.pulang}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="mb-6 text-blue-300 flex items-center">
-            <i class="fas fa-calendar-day mr-3 text-blue-400"></i>
-            <span>Pengecekan tanggal: ${tanggalHariIni}</span>
-          </div>
-        `;
-
-        let riwayatHTML = '';
-        if (table) {
-          // Apply dark theme to table
-          table.classList.add('history-table');
-          table.querySelectorAll('th').forEach(th => {
-            th.className = 'bg-blue-900/50 text-blue-300 px-4 py-3 text-left font-semibold border-b border-blue-700/50';
-          });
-          table.querySelectorAll('td').forEach(td => {
-            td.className = 'px-4 py-3 border-b border-blue-800/30 text-blue-100';
-          });
-          table.querySelectorAll('tbody tr').forEach(tr => {
-            tr.classList.add('hover:bg-blue-900/30', 'transition-colors');
-          });
-          riwayatHTML = table.outerHTML;
-        } else {
-          riwayatHTML = '<div class="text-center py-8 text-blue-300"><i class="fas fa-inbox text-4xl mb-4 block"></i>Tidak ada riwayat absensi.</div>';
-        }
-
-        document.getElementById("dialog-title").textContent = acc.name;
-        document.getElementById("dialog-email").textContent = acc.email;
-        
-        // Update status indicator in dialog
-        const statusIndicator = document.getElementById("status-indicator");
-        const statusText = document.getElementById("status-text");
-        
-        if (semuaAktif) {
-          statusIndicator.className = 'status-indicator status-online';
-          statusText.textContent = 'Aktif';
-        } else {
-          statusIndicator.className = 'status-indicator status-offline';
-          statusText.textContent = 'Nonaktif';
-        }
-        
-        document.getElementById("dialog-last").innerHTML = `
-          ${absensiStatusHTML}
-          <div class="mt-8">
-            <h4 class="text-xl font-semibold text-blue-300 mb-4 flex items-center">
-              <i class="fas fa-history mr-3"></i> Riwayat Absensi
-            </h4>
-            ${riwayatHTML}
-          </div>
-        `;
-
-        document.getElementById("detail-dialog").showModal();
-
-      } catch (error) {
-        showNotification(`Error: ${error.message}`);
-      } finally {
-        loading = false;
-        iconElement.className = originalIconClass;
-      }
-    };
-
-    list.appendChild(card);
+function refreshAllCards() {
+  const container = document.getElementById('account-list');
+  container.innerHTML = '';
+  
+  accounts.forEach(account => {
+    const card = createAccountCard(account);
+    container.appendChild(card);
   });
-});
+}
+
+function init() {
+  // Initial render
+  refreshAllCards();
+  
+  // Refresh button
+  document.getElementById('refresh-btn').addEventListener('click', () => {
+    const icon = document.querySelector('#refresh-btn i');
+    icon.classList.add('fa-spin');
+    
+    refreshAllCards();
+    
+    setTimeout(() => {
+      icon.classList.remove('fa-spin');
+      showNotification('Dashboard berhasil di-refresh!', 'success');
+    }, 1000);
+  });
+}
+
+// Start application when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
