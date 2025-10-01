@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Absensi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+      
+      :root {
+        --neon-blue: #00d4ff;
+        --dark-blue: #0a192f;
+        --darker-blue: #020c1b;
+        --glass-bg: rgba(10, 25, 47, 0.8);
+      }
+      
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      
+      body {
+        font-family: 'Poppins', sans-serif;
+        background: var(--darker-blue);
+        color: #e6f1ff;
+        min-height: 100vh;
+        overflow-x: hidden;
+        position: relative;
+      }
+      
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: 
+          radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.1) 0%, transparent 40%),
+          radial-gradient(circle at 80% 20%, rgba(0, 212, 255, 0.1) 0%, transparent 40%);
+        z-index: -1;
+        animation: backgroundMove 20s ease-in-out infinite;
+      }
+      
+      @keyframes backgroundMove {
+        0%, 100% { transform: translate(0, 0) rotate(0deg); }
+        50% { transform: translate(-20px, 20px) rotate(-5deg); }
+      }
+      
+      .grid-lines {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-image: 
+          linear-gradient(rgba(0, 212, 255, 0.07) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 212, 255, 0.07) 1px, transparent 1px);
+        background-size: 50px 50px;
+        z-index: -1;
+        opacity: 0.5;
+      }
+      
+      .neon-text {
+        font-family: 'Orbitron', sans-serif;
+        text-shadow: 
+          0 0 5px var(--neon-blue), 0 0 10px var(--neon-blue),
+          0 0 20px var(--neon-blue), 0 0 40px rgba(0, 212, 255, 0.5);
+        letter-spacing: 2px;
+      }
+      
+      .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        border-radius: 1.25rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        overflow: hidden;
+        position: relative;
+      }
+      
+      .glass-card:hover {
+        transform: translateY(-10px) scale(1.02);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 212, 255, 0.3);
+        border-color: rgba(0, 212, 255, 0.4);
+      }
+      
+      .status-indicator {
+        display: inline-block; width: 12px; height: 12px;
+        border-radius: 50%;
+      }
+      .status-online { background-color: #4ade80; box-shadow: 0 0 10px #4ade80; }
+      .status-offline { background-color: #f87171; box-shadow: 0 0 10px #f87171; }
+      .status-warning { background-color: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+      
+      .history-table {
+        width: 100%; border-collapse: separate; border-spacing: 0;
+        border-radius: 0.75rem; overflow: hidden;
+      }
+      .history-table th {
+        background: rgba(0, 31, 63, 0.9); color: var(--neon-blue);
+        font-weight: 700; text-transform: uppercase; font-size: 0.8rem;
+        padding: 1rem 1.25rem; text-align: left;
+        border-bottom: 2px solid rgba(0, 212, 255, 0.3);
+      }
+      .history-table td {
+        background: rgba(10, 25, 47, 0.7); padding: 1rem 1.25rem;
+        font-size: 0.9rem; border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+      }
+      .history-table tr:last-child td { border-bottom: 0; }
+      .history-table tr:hover td { background: rgba(0, 31, 63, 0.8); }
+      
+      dialog {
+        background: linear-gradient(135deg, #051021 0%, #020c1b 100%);
+        backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+        border: 2px solid rgba(0, 212, 255, 0.3);
+        border-radius: 1.5rem; color: #e6f1ff;
+        width: 92%; max-width: 1100px;
+        padding: 0; overflow: hidden;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 100px rgba(0, 212, 255, 0.1);
+      }
+      dialog::backdrop { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); }
+      
+      .dialog-content { padding: 1.5rem; md:padding: 2.5rem; max-height: 85vh; overflow-y: auto; }
+      
+      .btn {
+        color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 0.5rem;
+        font-weight: 600; cursor: pointer; transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        position: relative; overflow: hidden; z-index: 1;
+      }
+      .btn-primary { background: linear-gradient(90deg, #0ea5e9 0%, #0284c7 100%); }
+      .btn:hover { transform: translateY(-3px); box-shadow: 0 7px 20px rgba(0, 131, 199, 0.5); }
+      
+      .notification {
+        position: fixed; top: 20px; right: 20px;
+        padding: 1rem 1.5rem; border-radius: 0.5rem;
+        border: 1px solid;
+        backdrop-filter: blur(10px); z-index: 1000;
+        display: flex; align-items: center;
+        opacity: 0; transform: translateY(-20px);
+        transition: opacity 0.3s, transform 0.3s;
+      }
+      .notification.show { opacity: 1; transform: translateY(0); }
+      .notification-error { background: rgba(248, 113, 113, 0.2); border-color: rgba(248, 113, 113, 0.5); color: #fca5a5; }
+      .notification-success { background: rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.5); color: #86efac; }
+
+      .skeleton-loader {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      @keyframes pulse {
+        50% { opacity: .5; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid-lines"></div>
+    
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <header class="text-center mb-16">
+        <h1 class="text-5xl md:text-6xl font-bold mb-3 neon-text">Dashboard Absensi PKL</h1>
+        <p class="text-lg md:text-xl text-blue-300 max-w-3xl mx-auto">Monitoring Real-time Peserta PKL</p>
+      </header>
+
+      <div id="notification-area"></div>
+      
+      <div class="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-blue-300">Daftar Peserta</h2>
+          <p class="text-blue-400">Klik kartu untuk melihat detail dan riwayat absensi.</p>
+        </div>
+        <div class="flex space-x-4">
+          <button id="refresh-btn" class="btn btn-primary"><i class="fas fa-sync-alt mr-2"></i>Refresh</button>
+        </div>
+      </div>
+      
+      <div id="account-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
+    </div>
+
+    <dialog id="detail-dialog">
+      <div id="dialog-content-loader" class="p-10 text-center">
+        <i class="fas fa-spinner fa-spin text-5xl text-blue-400"></i>
+        <p class="mt-4 text-xl">Memuat data...</p>
+      </div>
+      <div id="dialog-main-content" class="hidden">
+        <div class="dialog-header p-6 md:p-8 bg-black/20 border-b border-blue-500/20">
+            <div class="flex flex-col sm:flex-row items-start">
+              <div class="bg-blue-900/50 p-4 rounded-xl mr-6 mb-4 sm:mb-0 border border-blue-700/50">
+                <i class="fas fa-user-circle text-5xl text-blue-400"></i>
+              </div>
+              <div>
+                <h2 id="dialog-title" class="text-3xl font-bold text-white mb-1"></h2>
+                <p id="dialog-email" class="text-blue-300"></p>
+                <div class="flex items-center mt-3">
+                  <span id="dialog-status-indicator" class="status-indicator mr-2"></span>
+                  <span id="dialog-status-text" class="text-blue-300"></span>
+                </div>
+              </div>
+              <button onclick="document.getElementById('detail-dialog').close()" class="btn absolute top-4 right-4 bg-red-500/50 hover:bg-red-500/80 w-10 h-10 p-0 flex items-center justify-center rounded-full">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+          <div class="dialog-content">
+            <div class="glass-card p-6 mb-8">
+              <h3 class="text-xl font-semibold text-blue-300 mb-4"><i class="fas fa-cogs mr-3 text-blue-400"></i>Status & Kontrol Cron Job</h3>
+              <div id="cron-status-container" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+            </div>
+            <div class="glass-card p-6">
+              <h3 class="text-xl font-semibold text-blue-300 mb-4"><i class="fas fa-calendar-check mr-3 text-blue-400"></i>Riwayat Absensi</h3>
+              <div id="history-container" class="overflow-x-auto"></div>
+            </div>
+          </div>
+      </div>
+    </dialog>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const CRON_API_URL = "https://api.cron-job.org";
+        // --- KONFIGURASI AKUN ---
+        // Pindahkan semua informasi akun ke sini agar terpusat.
+        const accounts = [
+          {
+            id: "bagas",
+            name: "Bagas Zakyan",
+            email: "13636@gmail.com",
+            icon: "fa-user-graduate",
+            cron: {
+              masuk: { jobId: "6070729", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" },
+              pulang: { jobId: "6070763", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" }
+            }
+          },
+          {
+            id: "dea",
+            name: "Dea Fransiska",
+            email: "13637@gmail.com",
+            icon: "fa-user-tie",
+            cron: {
+              masuk: { jobId: "6070758", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" },
+              pulang: { jobId: "6070776", apiKey: "8FgWf4X2k+tXfq5wHlVintm6zBokMuob0AHPo5FabPE=" }
+            }
+          }
+        ];
+
+        const accountList = document.getElementById("account-list");
+        const dialog = document.getElementById('detail-dialog');
+        const dialogLoader = document.getElementById('dialog-content-loader');
+        const dialogContent = document.getElementById('dialog-main-content');
+        
+        let isModalLoading = false;
+
+        // ========== UTILITIES ==========
+
+        function showNotification(message, type = 'error') {
+            const area = document.getElementById('notification-area');
+            const notif = document.createElement('div');
+            notif.className = `notification notification-${type}`;
+            notif.innerHTML = `<i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'} mr-3"></i><span>${message}</span>`;
+            area.appendChild(notif);
+            
+            setTimeout(() => notif.classList.add('show'), 10);
+            setTimeout(() => {
+                notif.classList.remove('show');
+                setTimeout(() => notif.remove(), 300);
+            }, 5000);
+        }
+
+        async function fetchWithTimeout(resource, options = {}, timeout = 8000) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            const response = await fetch(resource, { ...options, signal: controller.signal });
+            clearTimeout(id);
+            return response;
+        }
+        
+        async function getCronStatus(cronId, apiKey) {
+            try {
+                const response = await fetchWithTimeout(`${CRON_API_URL}/jobs/${cronId}`, {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+                if (!data?.jobDetails) throw new Error('Invalid job details structure');
+                return data.jobDetails;
+            } catch (error) {
+                console.error('Error fetching cron status:', error);
+                throw error;
+            }
+        }
+        
+        async function updateCronJob(jobId, apiKey, body) {
+            const response = await fetchWithTimeout(`${CRON_API_URL}/jobs/${jobId}`, {
+                method: "PATCH",
+                headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ job: body })
+            });
+            if (!response.ok) throw new Error('Gagal update cron job');
+            return response.json();
+        }
+
+        // ========== UI RENDERING ==========
+
+        function createAccountCard(acc) {
+            const card = document.createElement("div");
+            card.className = "glass-card p-6 cursor-pointer";
+            card.innerHTML = `
+              <div class="flex items-start mb-6">
+                <div class="bg-blue-900/30 p-4 rounded-xl mr-4 border border-blue-700/30">
+                  <i class="fas ${acc.icon} text-3xl text-blue-400"></i>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-2xl font-bold text-white mb-1">${acc.name}</h3>
+                  <p class="text-blue-300">${acc.email}</p>
+                </div>
+              </div>
+              <div class="flex justify-between items-center">
+                <div class="flex items-center">
+                  <span class="status-indicator status-warning mr-2"></span>
+                  <span class="text-blue-300 text-sm">Memeriksa...</span>
+                </div>
+                <button class="text-blue-300"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            `;
+            card.addEventListener('click', () => openDetailModal(acc));
+            return card;
+        }
+
+        async function checkInitialStatus(card, acc) {
+          try {
+            const [masuk, pulang] = await Promise.all([
+              getCronStatus(acc.cron.masuk.jobId, acc.cron.masuk.apiKey),
+              getCronStatus(acc.cron.pulang.jobId, acc.cron.pulang.apiKey)
+            ]);
+            const statusIndicator = card.querySelector('.status-indicator');
+            const statusText = card.querySelector('.text-sm');
+            if (masuk.enabled && pulang.enabled) {
+              statusIndicator.className = 'status-indicator status-online mr-2';
+              statusText.textContent = 'Aktif';
+            } else {
+              statusIndicator.className = 'status-indicator status-offline mr-2';
+              statusText.textContent = 'Nonaktif';
+            }
+          } catch (error) {
+            card.querySelector('.status-indicator').className = 'status-indicator status-warning mr-2';
+            card.querySelector('.text-sm').textContent = 'Gagal Cek';
+          }
+        }
+
+        function buildHistoryTable(historyData) {
+            if (!historyData || historyData.length === 0) {
+                return '<div class="text-center py-8 text-blue-300"><i class="fas fa-inbox text-4xl mb-4 block"></i>Tidak ada riwayat absensi ditemukan.</div>';
+            }
+
+            let tableHTML = `<table class="history-table"><thead><tr>
+                <th>Tanggal</th><th>Absen Masuk</th><th>Absen Pulang</th><th>Status</th>
+            </tr></thead><tbody>`;
+
+            historyData.forEach(row => {
+                tableHTML += `<tr>
+                    <td>${row.tanggal}</td>
+                    <td>${row.masuk}</td>
+                    <td>${row.pulang}</td>
+                    <td>${row.status}</td>
+                </tr>`;
+            });
+
+            tableHTML += '</tbody></table>';
+            return tableHTML;
+        }
+
+        // ========== MODAL LOGIC ==========
+        
+        async function openDetailModal(acc) {
+            if (isModalLoading) return;
+            isModalLoading = true;
+            
+            dialogLoader.classList.remove('hidden');
+            dialogContent.classList.add('hidden');
+            dialog.showModal();
+
+            try {
+                // Fetch all data in parallel
+                const [cronMasuk, cronPulang, historyResponse] = await Promise.all([
+                    getCronStatus(acc.cron.masuk.jobId, acc.cron.masuk.apiKey),
+                    getCronStatus(acc.cron.pulang.jobId, acc.cron.pulang.apiKey),
+                    fetchWithTimeout(`/api/history?user=${acc.id}`)
+                ]);
+
+                if (!historyResponse.ok) {
+                    throw new Error(`Gagal memuat riwayat: ${historyResponse.statusText}`);
+                }
+                const historyData = await historyResponse.json();
+                if (!historyData.success) {
+                    throw new Error(`API Error: ${historyData.message}`);
+                }
+                
+                // Populate dialog with data
+                populateDialog(acc, cronMasuk, cronPulang, historyData.data);
+
+                dialogLoader.classList.add('hidden');
+                dialogContent.classList.remove('hidden');
+
+            } catch (error) {
+                showNotification(`Error: ${error.message}`);
+                dialog.close();
+            } finally {
+                isModalLoading = false;
+            }
+        }
+
+        function populateDialog(acc, cronMasuk, cronPulang, history) {
+            document.getElementById("dialog-title").textContent = acc.name;
+            document.getElementById("dialog-email").textContent = acc.email;
+
+            const isAllActive = cronMasuk.enabled && cronPulang.enabled;
+            const indicator = document.getElementById('dialog-status-indicator');
+            const text = document.getElementById('dialog-status-text');
+            indicator.className = `status-indicator ${isAllActive ? 'status-online' : 'status-offline'}`;
+            text.textContent = isAllActive ? 'Aktif' : 'Nonaktif';
+            
+            const cronContainer = document.getElementById("cron-status-container");
+            const jamMasukDefault = cronMasuk.schedule.hours[0] !== -1 ? `${String(cronMasuk.schedule.hours[0]).padStart(2, '0')}:${String(cronMasuk.schedule.minutes[0]).padStart(2, '0')}` : "08:00";
+            const jamPulangDefault = cronPulang.schedule.hours[0] !== -1 ? `${String(cronPulang.schedule.hours[0]).padStart(2, '0')}:${String(cronPulang.schedule.minutes[0]).padStart(2, '0')}` : "17:00";
+            
+            const formatWaktuLokal = (ts) => ts ? new Date(ts * 1000).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' }) : '-';
+            
+            cronContainer.innerHTML = `
+              <div>
+                <p class="font-semibold text-lg text-blue-200">Cron Masuk</p>
+                <p class="text-sm text-blue-400">Next: ${formatWaktuLokal(cronMasuk.nextExecution)}</p>
+                <label class="block mt-4 mb-1 text-sm font-semibold text-blue-300">Jam Masuk</label>
+                <input id="input-jam-masuk" type="time" class="w-full bg-blue-900/50 border border-blue-700 rounded-lg p-2 text-white" value="${jamMasukDefault}">
+              </div>
+              <div>
+                <p class="font-semibold text-lg text-blue-200">Cron Pulang</p>
+                <p class="text-sm text-blue-400">Next: ${formatWaktuLokal(cronPulang.nextExecution)}</p>
+                <label class="block mt-4 mb-1 text-sm font-semibold text-blue-300">Jam Pulang</label>
+                <input id="input-jam-pulang" type="time" class="w-full bg-blue-900/50 border border-blue-700 rounded-lg p-2 text-white" value="${jamPulangDefault}">
+              </div>
+              <div class="md:col-span-2 flex flex-col sm:flex-row gap-4 mt-4">
+                <button id="save-cron-btn" class="btn btn-primary flex-1"><i class="fas fa-save mr-2"></i>Simpan Jadwal</button>
+                <button id="toggle-cron-btn" class="btn ${isAllActive ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} flex-1">
+                  <i class="fas ${isAllActive ? 'fa-stop-circle' : 'fa-play-circle'} mr-2"></i>${isAllActive ? 'Nonaktifkan' : 'Aktifkan'}
+                </button>
+              </div>`;
+
+            document.getElementById('history-container').innerHTML = buildHistoryTable(history);
+
+            // Add event listeners
+            document.getElementById('save-cron-btn').addEventListener('click', (e) => handleSaveSchedule(e.target, acc));
+            document.getElementById('toggle-cron-btn').addEventListener('click', (e) => handleToggleCrons(e.target, acc, !isAllActive));
+        }
+        
+        // ========== EVENT HANDLERS ==========
+        
+        async function handleSaveSchedule(button, acc) {
+            button.disabled = true;
+            button.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
+
+            const jamMasuk = document.getElementById("input-jam-masuk").value;
+            const jamPulang = document.getElementById("input-jam-pulang").value;
+            const [jamMasukH, jamMasukM] = jamMasuk.split(':').map(Number);
+            const [jamPulangH, jamPulangM] = jamPulang.split(':').map(Number);
+
+            try {
+                await Promise.all([
+                    updateCronJob(acc.cron.masuk.jobId, acc.cron.masuk.apiKey, { schedule: { timezone: "Asia/Jakarta", minutes: [jamMasukM], hours: [jamMasukH], wdays: [1,2,3,4,5] } }),
+                    updateCronJob(acc.cron.pulang.jobId, acc.cron.pulang.apiKey, { schedule: { timezone: "Asia/Jakarta", minutes: [jamPulangM], hours: [jamPulangH], wdays: [1,2,3,4,5] } })
+                ]);
+                showNotification('Jadwal berhasil diperbarui!', 'success');
+                dialog.close();
+                refreshAll();
+            } catch (error) {
+                showNotification(`Gagal menyimpan: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.innerHTML = `<i class="fas fa-save mr-2"></i>Simpan Jadwal`;
+            }
+        }
+        
+        async function handleToggleCrons(button, acc, enable) {
+            button.disabled = true;
+            button.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Memproses...`;
+            try {
+                await Promise.all([
+                    updateCronJob(acc.cron.masuk.jobId, acc.cron.masuk.apiKey, { enabled: enable }),
+                    updateCronJob(acc.cron.pulang.jobId, acc.cron.pulang.apiKey, { enabled: enable })
+                ]);
+                showNotification(`Semua cron job berhasil ${enable ? 'diaktifkan' : 'dinonaktifkan'}!`, 'success');
+                dialog.close();
+                refreshAll();
+            } catch (error) {
+                showNotification(`Gagal mengubah status: ${error.message}`);
+            } finally {
+                 button.disabled = false;
+                 button.innerHTML = `<i class="fas ${enable ? 'fa-play-circle' : 'fa-stop-circle'} mr-2"></i>${enable ? 'Aktifkan' : 'Nonaktifkan'}`;
+            }
+        }
+
+        // ========== INITIALIZATION ==========
+        
+        function refreshAll() {
+            accountList.innerHTML = ''; // Clear existing cards
+            accounts.forEach(acc => {
+                const card = createAccountCard(acc);
+                accountList.appendChild(card);
+                checkInitialStatus(card, acc);
+            });
+        }
+
+        document.getElementById('refresh-btn').addEventListener('click', refreshAll);
+        
+        // Initial load
+        refreshAll();
+      });
+    </script>
+  </body>
+</html>
