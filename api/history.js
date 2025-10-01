@@ -23,21 +23,41 @@ export default async function handler(req, res) {
   const { user } = req.query;
 
   if (!user || !accounts[user]) {
-    return res.status(400).json({ success: false, message: 'User tidak valid.' });
+    return res.status(400).json({ 
+      success: false, 
+      message: 'User tidak valid.',
+      error: 'USER_INVALID'
+    });
   }
 
   const { email, password, nama, tempat } = accounts[user];
 
   try {
-    // 1. Login
+    // 1. Login with better error handling
     const loginRes = await fetchWithCookies('https://absenpkl.stmbksimo.com/sw-proses?action=login', {
       method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      headers: { 
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
       body: new URLSearchParams({ email, password })
     });
+
+    if (!loginRes.ok) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Gagal terhubung ke server absensi.',
+        error: 'CONNECTION_FAILED'
+      });
+    }
+
     const loginText = await loginRes.text();
     if (!loginText.toLowerCase().includes('success')) {
-      return res.status(401).json({ success: false, message: 'Login gagal.' });
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Login gagal. Periksa kredensial.',
+        error: 'LOGIN_FAILED'
+      });
     }
 
     // 2. Fetch History
